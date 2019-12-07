@@ -1,0 +1,179 @@
+---
+title: "678mid_project"
+author: "xiaofei_wu"
+date: "2019/11/19"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+  
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+system("java -version")
+
+## Load libraries
+## Here we load libraries for data wrangling and visualisation.
+
+library(lme4)
+library(jsonlite)
+library(knitr)
+library(forecast)
+library(zoo)
+library(magrittr)
+library(tidyverse)
+library(dplyr)
+library(stringr)
+library(jsonlite)
+install.packages('psych')
+install.packages('GPArotation')
+library(psych)
+library(GPArotation)
+```
+
+## I. Load data
+```{r}
+# Random select 30000 rows from the training data set using ternimal
+## use fread to produce data.table，then transfer it to data.frame.
+fsample_select<-data.table::fread("data/sample_select.csv",select=c(1:6,8:13),stringsAsFactors=FALSE)
+sample_select<-as.data.frame(fsample_select)
+## renames the columns for the train and test dataset.
+head<- read.csv("data/headfile.csv")
+colnames(sample_select)<-colnames(head)[-7]
+sample_select$fullVisitorId=as.character(sample_select$fullVisitorId)  #id as character
+```
+
+
+
+## II. Clean Data
+## check mode of columns and split json columns 
+```{r}
+#split json columns 
+
+data_full<- sample_select %>% 
+  mutate(custom_dimensions_index=str_extract_all(customDimensions,"(?<=: \')(.*?)(?=\')")[[1]][1]) %>% 
+  mutate(custom_dimensions_value=str_extract_all(customDimensions,"(?<=: \')(.*?)(?=\')")[[1]][2]) 
+#replace quoates & split json columns
+data1 <- data.frame(lapply(data_full, function(x){gsub("\"\"", "\"", x)}))
+## split device columns. 
+json_device <- paste("[",paste(data1$device,collapse = ","),"]")
+device_add <- fromJSON(json_device)
+## split geoNetwork columns. 
+json_geo <- paste("[",paste(data1$geoNetwork,collapse = ","),"]")
+geo_add <- fromJSON(json_geo)
+## split totals columns. 
+json_ttls <- paste("[",paste(unlist(data1$totals),collapse = ","),"]")
+ttls_add <- fromJSON(json_ttls)
+## split trafficSource columns. 
+json_trSr <- paste("[",paste(data1$trafficSource,collapse = ","),"]")
+trSr_add <- fromJSON(json_trSr,flatten = TRUE)
+factor_full<-cbind(data1,device_add,geo_add,ttls_add,trSr_add)%>%select(-c(customDimensions,device,geoNetwork,totals,trafficSource))
+
+## select the first 20000 rows as the training dataset 
+## and select the last 10000 rows as the test dataset 
+factor_train<- factor_full[1:20000,]
+factor_test<- factor_full[20001:30000,]
+write_csv(factor_train,"/Users/vv/Desktop/678/mid_project/midterm_project_678/data/datatrain_factors")
+write_csv(factor_test,"/Users/vv/Desktop/678/mid_project/midterm_project_678/data/datatest_factors")
+```
+
+## III. Exploratory Data Analysis
+## analyze each columns 
+```{r}
+## Data Fields
+# fullVisitorId- A unique identifier for each user of the Google Merchandise Store.
+# channelGrouping - The channel via which the user came to the Store.
+# date - The date on which the user visited the Store.
+# device - The specifications for the device used to access the Store.
+# geoNetwork - This section contains information about the geography of the user.
+# socialEngagementType - Engagement type, either "Socially Engaged" or "Not Socially Engaged".
+# totals - This section contains aggregate values across the session.
+# trafficSource - This section contains information about the Traffic Source from which the session originated.
+# visitId - An identifier for this session. This is part of the value usually stored as the _utmb cookie. This is only unique to the user. For a completely unique ID, you should use a combination of fullVisitorId and visitId.
+# visitNumber - The session number for this user. If this is the first session, then this is set to 1.
+# visitStartTime - The timestamp (expressed as POSIX time).
+# hits - This row and nested fields are populated for any and all types of hits. Provides a record of all page visits.
+# customDimensions - This section contains any user-level or session-level custom dimensions that are set for a session. This is a repeated field and has an entry for each dimension that is set.
+# totals - This set of columns mostly includes high-level aggregate data.
+```
+
+```{r}
+## Distribution of the revenue
+hist(x=as.numeric(factor_train$transactionRevenue),,main="Distribution of the revenue", xlab = "revenue")
+## We notive most of the transactionRevenue laid arount zero, so we want to check if they are actually zero. 
+## The percentage of the non-zero and zero Revenue.
+contain_revenue=factor_train %>% 
+  mutate(Revenue=ifelse(transactionRevenue>0,1,0)) %>% 
+  group_by(Revenue) %>% 
+  summarise(n=n()) %>% 
+  mutate(percentage=paste0(round(n/nrow(factor_train),4)*100,"%"))
+contain_revenue
+
+## We can see that only 1.1% percentage of the data was none-zero revenue
+## Also most of the rows are zero revenue, we will focus on the none-zero revenue history to do the predict. 
+factor_train_fo<-factor_train%>%filter(!is.na(factor_train$transactionRevenue))
+hist(x=as.numeric(factor_train_fo$transactionRevenue),main="Distribution of the revenue for none-zero", xlab = "revenue for none-zero")
+
+## For our none-zero revenue data, the distribution of revenue is right skewed, so we see the log(revenue distribution). 
+hist(x=log(as.numeric(factor_train_fo$transactionRevenue)),main="Distribution of the log revenue for none-zero", xlab = "log revenue for none-zero")
+## For nonzero targets, they seems follow normal distribution.
+## Thus I created qqplot, and it indicates that the nonzero target approximately follows normal distribution.
+y=log(as.numeric(factor_train_fo$transactionRevenue))
+qqnorm(y);qqline(y, col = 2,lwd=2,lty=2)
+```
+## deleate columns that do not provide valuable content
+```{r}
+col_name=colnames(factor_train_fo)
+# uniques<-list()
+# for(i in 1:59){
+#   column=colnames(factor_train_fo)[i]
+#   print(column)
+#  print(unique(factor_train_fo$column))
+# }
+unique(factor_train_fo$custom_dimensions_index)#ALL IS 4, SO DELEATE COLUMN
+unique(factor_train_fo$socialEngagementType) #ALL IS "Not Socially Engaged", SO DELEATE COLUMN
+unique(factor_train_fo$custom_dimensions_value) #ALL IS "North America", SO DELEATE COLUMN
+unique(factor_train_fo$visits) #ALL IS 1, SO DELEATE COLUMN
+##DELEATE following columns since they do not provide valuable content. "browserVersion", "browserSize", "operatingSystemVersion", "mobileDeviceBranding", "mobileDeviceModel", "mobileInputSelector", "mobileDeviceInfo", "mobileDeviceMarketingName", "flashVersion", "language", "screenColors", "screenResolution", "cityId", "latitude", "longitude", "networkLocation", "bounces"
+factor_train_use<-select(factor_train_fo,c(1,2,3,5:7,10,13,15,25:31, 33,38:41,43:46))
+factor_train<-select(factor_train_use,c(-c(2:4),-6,-21,-22))
+## transfer all valuables into numerical,do the factor analysis to see the major group of predictors. 
+factor_train_num<-factor_train%>%transform(channelGrouping=as.numeric(channelGrouping),visitNumber=as.numeric(visitNumber), browser =as.numeric(as.factor(browser)),operatingSystem =as.numeric(as.factor(operatingSystem)),isMobile =as.numeric(isMobile),deviceCategory =as.numeric(as.factor(deviceCategory)),continent =as.numeric(as.factor(continent)),subContinent =as.numeric(as.factor(subContinent)),country =as.numeric(as.factor(country)),region =as.numeric(as.factor(region)),metro =as.numeric(as.factor(metro)),city =as.numeric(as.factor(city)),networkDomain =as.numeric(as.factor(networkDomain)),hits =as.numeric(as.factor(hits)),pageviews =as.numeric(as.factor(pageviews)),timeOnSite =as.numeric(as.factor(timeOnSite)),transactions =as.numeric(as.factor(transactions)),transactionRevenue =as.numeric(as.factor(transactionRevenue)),totalTransactionRevenue =as.numeric(as.factor(totalTransactionRevenue)))
+factor_train_num<-as.data.frame(factor_train_num)
+## correlation between predictors
+factor_train_cor<-cor(factor_train_num, y = NULL, use = "everything",
+    method = c("pearson", "kendall", "spearman"))
+Percentile_00  = min(abs(factor_train_cor))
+Percentile_33  = quantile(abs(factor_train_cor), 0.33333)
+Percentile_67  = quantile(abs(factor_train_cor), 0.66667)
+Percentile_100 = quantile(abs(factor_train_cor), 0.99999)
+
+## Only transfer the top 1/3 correlation to upper
+factor_train_cor[abs(factor_train_cor) >= Percentile_67 & factor_train_cor <= Percentile_100] = "Upper"
+
+
+## try factor analysis between predictors
+parallel <- fa.parallel(factor_train_num, fm = 'minres', fa = 'fa')
+## Parallel analysis suggests that the number of factors =  6  and the number of components =  NA 
+sixfactor <- fa(factor_train_num,nfactors = 6,rotate = "oblimin",fm="minres")
+print(sixfactor)
+fa.diagram(sixfactor)
+# Despide our output revenue, we could see that the factor analysis suggests to put all of our predictors into 5 groups, I conclude as "device", "hits", "city", "continent", "region+browser"
+# the conbination of region and browser is wierd, so I also tried the number of factors =  5
+fivefactor <- fa(factor_train_num,nfactors = 5,rotate = "oblimin",fm="minres")
+print(fivefactor)
+fa.diagram(fivefactor)
+# for the number of factors =  5, we could see that the factor analysis suggests to put all of our predictors into"device+browser", "hits", "city", "continent", which make more sense here. 
+
+unique(factor_train$isMobile)
+unique(factor_train$deviceCategory)
+
+```
