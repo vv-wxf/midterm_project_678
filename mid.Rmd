@@ -32,7 +32,10 @@ library(magrittr)
 library(tidyverse)
 library(dplyr)
 library(stringr)
+<<<<<<< HEAD
+=======
 library(jsonlite)
+>>>>>>> 6d2eaa3b87c401c1b510f3c104d7e237570fa0f8
 install.packages('psych')
 install.packages('GPArotation')
 library(psych)
@@ -79,10 +82,28 @@ factor_full<-cbind(data1,device_add,geo_add,ttls_add,trSr_add)%>%select(-c(custo
 
 ## select the first 20000 rows as the training dataset 
 ## and select the last 10000 rows as the test dataset 
+<<<<<<< HEAD
+factor_full$pageviews<-as.numeric(factor_full$pageviews)
+factor_full$visitNumber<-as.numeric(factor_full$visitNumber)
+factor_full$transactionRevenue<-as.numeric(factor_full$transactionRevenue)
+factor_train_use$transactionRevenue<-as.numeric(factor_train_use$transactionRevenue)
+factor_full$transactionRevenue[is.na(factor_full$transactionRevenue)] <- 0
+factor_full$pageviews[is.na(factor_full$pageviews)] <- 0
+factor_full$newVisits[is.na(factor_full$newVisits)] <- 0
+factor_full$isTrueDirect[is.na(factor_full$isTrueDirect)] <- FALSE
+factor_full<-factor_full%>%mutate(wkday=as.character(lubridate::wday(ymd(date)-1)))
+=======
+>>>>>>> 6d2eaa3b87c401c1b510f3c104d7e237570fa0f8
 factor_train<- factor_full[1:20000,]
 factor_test<- factor_full[20001:30000,]
 write_csv(factor_train,"/Users/vv/Desktop/678/mid_project/midterm_project_678/data/datatrain_factors")
 write_csv(factor_test,"/Users/vv/Desktop/678/mid_project/midterm_project_678/data/datatest_factors")
+<<<<<<< HEAD
+# none zero revenue "factor_train" to be factor_train_use
+factor_train_use <- factor_train[factor_train$transactionRevenue!=0,]
+factor_test_use <- factor_test[factor_test$transactionRevenue!=0,]
+=======
+>>>>>>> 6d2eaa3b87c401c1b510f3c104d7e237570fa0f8
 ```
 
 ## III. Exploratory Data Analysis
@@ -155,25 +176,228 @@ Percentile_00  = min(abs(factor_train_cor))
 Percentile_33  = quantile(abs(factor_train_cor), 0.33333)
 Percentile_67  = quantile(abs(factor_train_cor), 0.66667)
 Percentile_100 = quantile(abs(factor_train_cor), 0.99999)
+<<<<<<< HEAD
+##  transfer the lower 66.7% correlation to NI (Not importment)
+factor_train_cor[abs(factor_train_cor) >= Percentile_00 & factor_train_cor <= Percentile_67] = "NI"
+factor_train_cor
+=======
 
 ## Only transfer the top 1/3 correlation to upper
 factor_train_cor[abs(factor_train_cor) >= Percentile_67 & factor_train_cor <= Percentile_100] = "Upper"
 
+>>>>>>> 6d2eaa3b87c401c1b510f3c104d7e237570fa0f8
 
 ## try factor analysis between predictors
 parallel <- fa.parallel(factor_train_num, fm = 'minres', fa = 'fa')
 ## Parallel analysis suggests that the number of factors =  6  and the number of components =  NA 
 sixfactor <- fa(factor_train_num,nfactors = 6,rotate = "oblimin",fm="minres")
+<<<<<<< HEAD
+# print(sixfactor)
+=======
 print(sixfactor)
+>>>>>>> 6d2eaa3b87c401c1b510f3c104d7e237570fa0f8
 fa.diagram(sixfactor)
 # Despide our output revenue, we could see that the factor analysis suggests to put all of our predictors into 5 groups, I conclude as "device", "hits", "city", "continent", "region+browser"
 # the conbination of region and browser is wierd, so I also tried the number of factors =  5
 fivefactor <- fa(factor_train_num,nfactors = 5,rotate = "oblimin",fm="minres")
+<<<<<<< HEAD
+# print(fivefactor)
+=======
 print(fivefactor)
+>>>>>>> 6d2eaa3b87c401c1b510f3c104d7e237570fa0f8
 fa.diagram(fivefactor)
 # for the number of factors =  5, we could see that the factor analysis suggests to put all of our predictors into"device+browser", "hits", "city", "continent", which make more sense here. 
 
 unique(factor_train$isMobile)
 unique(factor_train$deviceCategory)
 
+<<<<<<< HEAD
+
+# factor_train$transactionRevenue<-as.numeric(factor_train$transactionRevenue)
+# factor_train_use$transactionRevenue<-as.numeric(factor_train_use$transactionRevenue)
+# factor_train$transactionRevenue[is.na(factor_train$transactionRevenue)] <- 0
+# factor_train$pageviews[is.na(factor_train$pageviews)] <- 0
+# factor_train$newVisits[is.na(factor_train$newVisits)] <- 0
+# factor_train$isTrueDirect[is.na(factor_train$isTrueDirect)] <- FALSE
+#pageviews
+ggplot(factor_train, aes(x=pageviews, y=log(as.numeric(transactionRevenue)+1), group=fullVisitorId,color=fullVisitorId))+
+  geom_smooth(method="lm")+
+  ylab("Revenue")+
+  ggtitle("Revenue v.s. pageviews per user")+
+  guides(color=FALSE)+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(axis.title.x = element_text(face="bold",  size=15), axis.title.y = element_text(face="bold",  size=15),plot.title = element_text(size=15, face="bold"),  axis.text.x  = element_text(angle=45,vjust=0.5, size=10))
+## CONCLUSION: the slope of “page views” will change a lot between different users
+## adding (0+pageviews|fullVisitorId) in the linear mixed models.
+
+# newVisits: “new visits” has great impact on outcome, thus it should be included in the model.
+T_nVisits <- factor_train %>% 
+  select(newVisits,transactionRevenue) %>% 
+  group_by(newVisits) %>% 
+  summarise(mean_revenue=mean(log(transactionRevenue+1))) %>% 
+  arrange(desc(mean_revenue))
+ggplot(T_nVisits,mapping = aes(x=reorder(newVisits,desc(mean_revenue)), y=mean_revenue))+
+  geom_bar(fill="skyblue",stat="identity")+
+  geom_text(aes(label=round(mean_revenue,2)), vjust=0)+
+  xlab("new visits")+
+  theme(axis.text.x = element_text(angle=45))+
+  ggtitle("mean revenue v.s. new visits")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(axis.title.x = element_text(face="bold",  size=15), axis.title.y = element_text(face="bold",  size=15),plot.title = element_text(size=15, face="bold"),  axis.text.x  = element_text(angle=45,vjust=0.5, size=10))
+
+# visitNumber
+T_nVisnum <- factor_train_use %>% 
+  select(visitNumber,transactionRevenue) %>% 
+  group_by(visitNumber) %>% 
+  summarise(mean_revenue=mean(log(transactionRevenue+1))) %>% 
+  arrange(desc(mean_revenue))
+ggplot(T_nVisnum,mapping = aes(x=visitNumber, y=mean_revenue))+
+    geom_smooth()+
+  geom_point()+geom_jitter()+
+  theme(axis.text.x = element_text(angle=45))+
+  ggtitle("mean revenue v.s. visitNumber")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(axis.title.x = element_text(face="bold",  size=15), axis.title.y = element_text(face="bold",  size=15),plot.title = element_text(size=15, face="bold"),  axis.text.x  = element_text(angle=45,vjust=0.5, size=10))
+
+#weekday
+# 1 means Monday, 7 means Sunday (default).
+install.packages("lubridate")
+library("lubridate")
+factor_train_wday <- factor_train %>% 
+  select(date,transactionRevenue) %>% 
+  mutate(wkday=as.character(lubridate::wday(ymd(date)-1)))
+T_wkday <- factor_train_wday %>% 
+  group_by(wkday) %>% 
+  summarise(mean_revenue=mean(log(transactionRevenue+1))) %>%
+  arrange(desc(mean_revenue))
+ggplot(T_wkday,mapping = aes(x=wkday, y=mean_revenue))+
+  geom_bar(fill="skyblue",stat="identity")+
+  geom_text(aes(label=round(mean_revenue,2)), vjust=0)+
+  theme(axis.text.x = element_text(angle=45))+
+  ggtitle("mean revenue v.s. weekday")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  theme(axis.title.x = element_text(face="bold",  size=15), axis.title.y = element_text(face="bold",  size=15),plot.title = element_text(size=15, face="bold"),  axis.text.x  = element_text(angle=45,vjust=0.5, size=10))
+factor_train<-factor_train%>%mutate(wkday=as.character(lubridate::wday(ymd(date)-1)))
+factor_train_use<-factor_train_use%>%mutate(wkday=as.character(lubridate::wday(ymd(date)-1)))
+factor_test<-factor_test%>%mutate(wkday=as.character(lubridate::wday(ymd(date)-1)))
+## recode by mean revenue
+
 ```
+## II. Model
+## 1. Mixed effect Linear Model (with log transformation)
+```{r}
+# by users
+factor_train$pageviews<-as.numeric(factor_train$pageviews)
+factor_train$visitNumber<-as.numeric(factor_train$visitNumber)
+MD1_nolog <- lmer(transactionRevenue~(1|fullVisitorId)+(1|pageviews)+factor(browser)+scale(pageviews)+factor(newVisits)+scale(visitNumber)+factor(operatingSystem)+factor(isMobile)+factor(continent)+factor(isTrueDirect)+factor(wkday), data=factor_train)
+summary(MD1_nolog)
+plot(MD1_nolog,col="blue")
+## residuals spread out, using LOG TRANSFORMATION.
+MD1 <- lmer(log(transactionRevenue+1)~(1|fullVisitorId)+(1|pageviews)+factor(browser)+scale(pageviews)+factor(newVisits)+scale(visitNumber)+factor(operatingSystem)+factor(isMobile)+factor(continent)+factor(isTrueDirect)+factor(wkday), data=factor_train_use)
+summary(MD1)
+MD1.2 <- lmer(log(transactionRevenue+1)~(1|fullVisitorId)+(1|pageviews)+factor(browser)+scale(pageviews)+factor(newVisits)+scale(visitNumber)+factor(operatingSystem)+factor(isMobile)+factor(continent)+factor(isTrueDirect)+factor(wkday), data=factor_train)
+summary(MD1.2)
+##  the residual for none-zero revenue is 0.9766, which is pretty small
+##  the residual for all revenue is 2.1965
+
+#check model
+plot(MD1,col="blue")
+qqnorm(resid(MD1))
+qqline(resid(MD1))
+plot(MD1.2,col="blue")
+qqnorm(resid(MD1.2))
+qqline(resid(MD1.2))
+
+#prediction using TEST
+#weekday
+# 1 means Monday, 7 means Sunday (default).
+install.packages("lubridate")
+library("lubridate")
+factor_test$pageviews<-as.numeric(factor_test$pageviews)
+factor_test$visitNumber<-as.numeric(factor_test$visitNumber)
+factor_test_wday <- factor_test %>% 
+  select(date,transactionRevenue) %>% 
+  mutate(wkday=as.character(lubridate::wday(ymd(date)-1)))
+T_wkday <- factor_test_wday %>% 
+  group_by(wkday) %>% 
+  summarise(mean_revenue=mean(log(transactionRevenue+1))) %>%
+  arrange(desc(mean_revenue))
+T_predictors1 <- T_predictors %>%
+  mutate(revenue=log(transactionRevenue+1))
+test_f <- factor_test %>%
+  select(transactionRevenue,fullVisitorId,pageviews, bounces, visitNumber,newVisits, isMobile, isTrueDirect, browser, operatingSystem, wkday, continent,timeOnSite) %>%
+  mutate(revenue=log(transactionRevenue+1))
+test_f$transactionRevenue <- log(test_f$transactionRevenue+1)
+test_f$pageviews <- scale(test_f$pageviews)
+test_f$bounces <- scale(test_f$bounces)
+test_f$visitNumber <- scale(test_f$visitNumber)
+test_f$isTrueDirect <- as.factor(test_f$isTrueDirect)
+test_f$timeOnSite <- scale(test_f$timeOnSite)
+#train
+pre_MD1.2=predict(MD1.2)
+rmse_MD1.2=sqrt(mean((abs(pre_MD1.2-factor_train$transactionRevenue))^2))
+rmse_MD1.2
+#test
+pre_MD1=predict(MD1,factor_test_use,allow.new.levels=TRUE)
+rmse_MD1=sqrt(mean((abs(exp(pre_MD1)-factor_test_use$transactionRevenue))^2))
+
+## bu continent 
+MD2 <- lmer(log(transactionRevenue+1)~(1|continent)+(0+pageviews|continent)+factor(bounces)+factor(browser)+scale(pageviews)+factor(newVisits)+scale(visitNumber)+factor(operatingSystem)+factor(isMobile)+factor(isTrueDirect)+factor(wkday), data=factor_train_use)
+summary(MD2)
+MD2.2 <- lmer(log(transactionRevenue+1)~(1|continent)+(0+pageviews|continent)+factor(browser)+scale(pageviews)+factor(newVisits)+scale(visitNumber)+factor(operatingSystem)+factor(isMobile)+factor(continent)+factor(isTrueDirect)+factor(wkday), data=factor_train)
+summary(MD2.2)
+#check model
+plot(MD2,col="blue")
+qqnorm(resid(MD2))
+qqline(resid(MD2))
+plot(MD2.2,col="blue")
+qqnorm(resid(MD2.2))
+qqline(resid(MD2.2))
+
+#train
+pre_MD2.2=predict(MD2.2)
+rmse_MD2.2=sqrt(mean((abs(pre_MD2.2-factor_train$transactionRevenue))^2))
+rmse_MD2.2
+#test
+pre_MD1=predict(MD1,factor_test_use,allow.new.levels=TRUE)
+rmse_MD1=sqrt(mean((abs(exp(pre_MD1)-factor_test_use$transactionRevenue))^2))
+```
+
+## 2. Logistic Model 
+# use to predict if the transectionRevenue == 0
+```{r}
+#data --logis
+library(dplyr)
+library(tydverse)
+train_logis <- factor_train %>%
+  mutate(iftransaction=ifelse(transactionRevenue==0,0,1))
+test_logis <- factor_test %>%
+  mutate(iftransaction=ifelse(transactionRevenue==0,0,1))
+
+
+## MD3: EDA with interaction
+MD3 <- glm(iftransaction~scale(pageviews)+factor(newVisits)+factor(browser)+factor(operatingSystem)+factor(isMobile)+factor(continent)+factor(wkday)+factor(isTrueDirect)+scale(visitNumber)+pageviews*browser+visitNumber*operatingSystem+visitNumber*isMobile+visitNumber*isTrueDirect+pageviews*operatingSystem+visitNumber*browser,family=binomial(link="logit"),data=train_logis)
+summary(MD3)
+
+#### train
+pre_logis_MD3_train <- round(predict(MD3,type="response"),0)
+sum(pre_logis_MD3_train==train_logis$iftransaction)/nrow(train_logis)
+#   0.98895
+test_logis<-test_logis[-c(test_logis$browser=="Nintendo Browser"),]
+test_logis<-test_logis[!test_logis$browser=="Nintendo Browser",]
+pre_logis_MD2_test <- round(predict(MD3,test_logis,type="response"),0)
+sum(pre_logis_MD2_test==test_logis$iftransaction)/nrow(test_logis)
+##  0.9887933
+sum(pre_logis_MD3_train==1 & train_logis$iftransaction==1)
+sum(train_logis$iftransaction==1)
+
+sum(pre_logis_MD2_test==1 & test_logis$iftransaction==1)
+
+factor_test_use1<-factor_test_use[pre_logis_MD2_test!=0,]
+factor_train_use <- factor_train[factor_train$transactionRevenue!=0,]
+logis_MD2_test=predict(MD1,factor_test_use1,allow.new.levels=TRUE)
+rmse_MD1=sqrt(mean((abs(pre_MD1-factor_test_use$transactionRevenue))^2))
+```
+=======
+```
+>>>>>>> 6d2eaa3b87c401c1b510f3c104d7e237570fa0f8
